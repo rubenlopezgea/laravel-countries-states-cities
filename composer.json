@@ -1,0 +1,35 @@
+{
+    "name": "rubenlopezgea/laravel-countries-states-cities",
+    "description": "Laravel DB Migrations and Models for Countries, States & Cities data",
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^8.0|^9.0|^10.0|^11.0"
+    },
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "RubenLopezGea\\LaravelCountriesStatesCities\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "role": "Developer",
+            "name": "Rubén López Gea",
+            "email": "contactar@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "preferred-install": "dist",
+        "optimize-autoloader": true
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "RubenLopezGea\\LaravelCountriesStatesCities\\Providers\\LaravelCountriesStatesCitiesServiceProvider"
+            ]
+        }
+    }
+}
