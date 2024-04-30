@@ -3,13 +3,13 @@
 namespace RubenLopezGea\LaravelCountriesStatesCities\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
-use RubenLopezGea\LaravelCountriesStatesCities\Models\City;
-use RubenLopezGea\LaravelCountriesStatesCities\Models\Country;
-use RubenLopezGea\LaravelCountriesStatesCities\Models\Region;
-use RubenLopezGea\LaravelCountriesStatesCities\Models\State;
-use RubenLopezGea\LaravelCountriesStatesCities\Models\Subregion;
+use RubenLopezGea\LaravelCountriesStatesCities\Database\Seeders\CitiesSeeder;
+use RubenLopezGea\LaravelCountriesStatesCities\Database\Seeders\CountriesSeeder;
+use RubenLopezGea\LaravelCountriesStatesCities\Database\Seeders\RegionsSeeder;
+use RubenLopezGea\LaravelCountriesStatesCities\Database\Seeders\StatesSeeder;
+use RubenLopezGea\LaravelCountriesStatesCities\Database\Seeders\SubregionsSeeder;
 
 class MigrateCountriesStatesCitiesTables extends Command
 {
@@ -28,11 +28,26 @@ class MigrateCountriesStatesCitiesTables extends Command
     protected $description = 'Generate tables if doesn\'t exist and populate them';
 
     private $tables = [
-        'regions' => Region::class,
-        'subregions' => Subregion::class,
-        'countries' => Country::class,
-        'states' => State::class,
-        'cities' => City::class,
+        'regions' => [
+            'migration' => '0000_00_00_000001_create_regions_table',
+            'seeder' => RegionsSeeder::class,
+        ],
+        'subregions' => [
+            'migration' => '0000_00_00_000002_create_subregions_table',
+            'seeder' => SubregionsSeeder::class,
+        ],
+        'countries' => [
+            'migration' => '0000_00_00_000003_create_countries_table',
+            'seeder' => CountriesSeeder::class,
+        ],
+        'states' => [
+            'migration' => '0000_00_00_000004_create_states_table',
+            'seeder' => StatesSeeder::class,
+        ],
+        'cities' => [
+            'migration' => '0000_00_00_000005_create_cities_table',
+            'seeder' => CitiesSeeder::class,
+        ],
     ];
 
     /**
@@ -40,28 +55,37 @@ class MigrateCountriesStatesCitiesTables extends Command
      */
     public function handle()
     {
+        $this->warn('This command requires at least 1.5Gb of free memory to run.');
+        $this->warn('If you have less than that, you may run into memory issues.');
+        $this->info('The system will try to set the memory limit to -1, but it may not work.');
+        $this->warn('If you run into memory issues, try increasing the memory limit in your php.ini file.');
+        $this->info('Currently you\'ve got set: '.ini_get('memory_limit').' of memory limit.');
+        $this->line('');
+        $this->line('');
         $this->info('Cleaning up...');
-        $bar = $this->output->createProgressBar(count($this->tables));
-        foreach (array_reverse($this->tables) as $table => $model) {
+        foreach (array_reverse($this->tables) as $table => $data) {
             $this->dropTable($table);
-            $bar->advance();
         }
-        $bar->finish();
-        $this->line("\n");
 
         $this->info('Creating tables and populating them...');
-        foreach ($this->tables as $table => $model) {
-            $this->createTable($table);
-            $this->populateTable($table, $model);
-            $this->line("\n");
+        $total = count($this->tables);
+        $current = 0;
+        foreach ($this->tables as $table => $data) {
+            $current++;
+            $counter = '['.$current.'/'.$total.']';
+            $this->info($counter.$table);
+            $this->createTable($table, $data);
+            $this->populateTable($table, $data);
         }
+        $this->line('');
+        $this->info('Done!');
+        $this->info('Memory used: '.(memory_get_peak_usage(true) / 1024 / 1024).' MB');
     }
 
     private function makePrefixed(string $table): string
     {
         if (strpos($table, '_') !== false) {
             return $table;
-
         }
         $prefix = config('countries-states-cities.table_prefix', '');
         if (! empty($prefix) && substr($prefix, -1) !== '_') {
@@ -79,164 +103,22 @@ class MigrateCountriesStatesCitiesTables extends Command
         }
     }
 
-    private function createTable(string $table): void
+    private function createTable(string $table, array $data): void
     {
-        $prefixedTable = $this->makePrefixed($table);
-        $method = 'createTable'.ucfirst($table);
-        $this->info('Creating table '.$prefixedTable.'...');
-        $this->$method($prefixedTable);
+        $migration_file = __DIR__.'/../../Database/Migrations/'.$data['migration'].'.php';
+        $migrator = new (require $migration_file)();
+        $migrator->up();
     }
 
-    private function populateTable(string $table, string $model): void
+    private function populateTable(string $table, array $model): void
     {
-        DB::disableQueryLog();
-
         if (! ini_get('auto_detect_line_endings')) {
             ini_set('auto_detect_line_endings', '1');
         }
         ini_set('memory_limit', '-1');
 
-        $filepath = __DIR__.'/../../data/csv/'.$table.'.csv';
-        $lines = count(file($filepath)) - 1;
-
-        $bar = $this->output->createProgressBar($lines);
-        $headers = false;
-        $file = fopen($filepath, 'r');
-        while (($line = fgetcsv($file)) !== false) {
-            if (! $headers) {
-                $headers = $line;
-
-                continue;
-            }
-            $data = array_combine($headers, $line);
-            if (isset($data['timezones'])) {
-                $data['timezones'] = json_decode($data['timezones']);
-            }
-            if (isset($data['translations'])) {
-                $data['translations'] = json_decode($data['translations']);
-            }
-            foreach ($data as $key => $value) {
-                if (empty($value) || $value === 'null') {
-                    $data[$key] = null;
-                }
-            }
-            try {
-                $model::create($data);
-            } catch (\Exception $e) {
-                dump($data);
-                $this->error($e->getMessage());
-                exit();
-            }
-            $bar->advance();
-        }
-        $bar->finish();
-
-        return;
-
-        $data = File::get(__DIR__.'/../../data/'.$table.'.json');
-        if (! $data) {
-            $this->error('No data found for '.$table);
-
-            return;
-        }
-        $bar = $this->output->createProgressBar(count(json_decode($data, true)));
-        $data = json_decode($data, true);
-        foreach ($data as $obj) {
-            $model::create((array) $obj);
-            $bar->advance();
-        }
-        $bar->finish();
-    }
-
-    private function createTableRegions(string $table): void
-    {
-        Schema::create($table, function ($table) {
-            $table->id();
-            $table->string('name', 100);
-            $table->json('translations')->nullable();
-            $table->boolean('flag')->default(true);
-            $table->string('wikiDataId', 255)->nullable();
-            $table->timestamps();
-        });
-    }
-
-    private function createTableSubregions(string $table): void
-    {
-        Schema::create($table, function ($table) {
-            $table->id();
-            $table->string('name', 100);
-            $table->json('translations')->nullable();
-            $table->foreignId('region_id')->constrained($this->makePrefixed('regions'));
-            $table->boolean('flag')->default(true);
-            $table->string('wikiDataId', 255)->nullable();
-            $table->timestamps();
-        });
-    }
-
-    private function createTableCountries(string $table): void
-    {
-        Schema::create($table, function ($table) {
-            $table->id();
-            $table->string('name', 100);
-            $table->string('iso3', 3)->nullable();
-            $table->string('numeric_code', 3)->nullable();
-            $table->string('iso2', 2)->nullable();
-            $table->string('phonecode', 255)->nullable();
-            $table->string('capital', 255)->nullable();
-            $table->string('currency', 255)->nullable();
-            $table->string('currency_name', 255)->nullable();
-            $table->string('currency_symbol', 255)->nullable();
-            $table->string('tld', 255)->nullable();
-            $table->string('native', 255)->nullable();
-            $table->string('region', 255)->nullable();
-            $table->foreignId('region_id')->nullable()->constrained($this->makePrefixed('regions'));
-            $table->string('subregion', 255)->nullable();
-            $table->foreignId('subregion_id')->nullable()->constrained($this->makePrefixed('subregions'));
-            $table->string('nationality', 255)->nullable();
-            $table->json('timezones')->nullable();
-            $table->json('translations')->nullable();
-            $table->decimal('latitude', 10, 8)->nullable();
-            $table->decimal('longitude', 11, 8)->nullable();
-            $table->string('emoji', 191)->nullable();
-            $table->string('emojiU', 191)->nullable();
-            $table->boolean('flag')->default(true);
-            $table->string('wikiDataId', 255)->nullable();
-            $table->timestamps();
-        });
-    }
-
-    private function createTableStates(string $table): void
-    {
-        Schema::create($table, function ($table) {
-            $table->id();
-            $table->string('name', 100);
-            $table->foreignId('country_id')->constrained($this->makePrefixed('countries'));
-            $table->string('country_code', 2)->nullable();
-            $table->string('country_name', 255)->nullable();
-            $table->string('state_code', 255)->nullable();
-            $table->string('type', 191)->nullable();
-            $table->decimal('latitude', 10, 8)->nullable();
-            $table->decimal('longitude', 11, 8)->nullable();
-            $table->boolean('flag')->default(true);
-            $table->string('wikiDataId', 255)->nullable();
-            $table->timestamps();
-        });
-    }
-
-    private function createTableCities(string $table): void
-    {
-        Schema::create($table, function ($table) {
-            $table->id();
-            $table->string('name', 255);
-            $table->foreignId('state_id')->constrained($this->makePrefixed('states'));
-            $table->string('state_code', 255)->nullable();
-            $table->foreignId('country_id')->constrained($this->makePrefixed('countries'));
-            $table->string('country_code', 2)->nullable();
-            $table->decimal('latitude', 10, 8)->nullable();
-            $table->decimal('longitude', 11, 8)->nullable();
-            $table->boolean('flag')->default(true);
-            $table->string('wikiDataId', 255)->nullable();
-            $table->timestamps();
-        });
+        Artisan::call('db:seed', [
+            '--class' => $model['seeder'],
+        ]);
     }
 }
