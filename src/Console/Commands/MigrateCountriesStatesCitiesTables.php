@@ -72,7 +72,7 @@ class MigrateCountriesStatesCitiesTables extends Command
         $current = 0;
         foreach ($this->tables as $table => $data) {
             $current++;
-            $counter = '['.$current.'/'.$total.']';
+            $counter = '['.$current.'/'.$total.'] ';
             $this->info($counter.$table);
             $this->createTable($table, $data);
             $this->populateTable($table, $data);

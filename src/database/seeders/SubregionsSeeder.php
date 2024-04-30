@@ -15,7 +15,7 @@ class SubregionsSeeder extends Seeder
 
     public function run(): void
     {
-        $filepath = __DIR__.'/../../data/'.$this->file.'.json';
+        $filepath = __DIR__.'/../data/'.$this->file.'.json';
         $data = json_decode(file_get_contents($filepath), true);
 
         $output = new \Symfony\Component\Console\Output\ConsoleOutput();
