@@ -21,10 +21,14 @@ class CitiesSeeder extends Seeder
         $output = new \Symfony\Component\Console\Output\ConsoleOutput();
         $progressBar = new \Symfony\Component\Console\Helper\ProgressBar($output, count($data));
         $progressBar->start();
-        foreach ($data as $row) {
-            $this->model::create($row);
-            $progressBar->advance();
+        
+        $data = collect($data);
+        foreach ($data->chunk(1000) as $chunk) {
+            $this->model::insert($chunk->toArray());
+            $progressBar->advance($chunk->count());
         }
+        unset($data);
+
         $progressBar->finish();
         $output->writeln('');
     }
